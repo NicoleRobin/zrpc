@@ -4,21 +4,21 @@ Copyright © 2024 robin zhang
 package cmd
 
 import (
+	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/constant"
+	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/generator"
 	"os"
 
 	"github.com/spf13/cobra"
-)
-
-const (
-	version = "v1.0.0"
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:     "protoc-gen-zrpc",
 	Short:   "A protoc plugin for zrpc",
-	Version: version,
-	// Run: func(cmd *cobra.Command, args []string) {},
+	Version: constant.Version,
+	Run: func(cmd *cobra.Command, args []string) {
+		generator.Generate()
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
