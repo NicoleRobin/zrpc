@@ -7,6 +7,14 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
+const (
+	errorsPackage  = "errors"
+	contextPackage = "context"
+	clientPackage  = protogen.GoImportPath("")
+	serverPackage  = protogen.GoImportPath("")
+	rpcPackage     = protogen.GoImportPath("")
+)
+
 func Generate() {
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
 		gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
@@ -44,12 +52,16 @@ func genRpc(gen *protogen.Plugin, file *protogen.File) {
 	g.P("package ", file.GoPackageName)
 
 	pkg := string(file.Desc.Package())
+	clientGetter := g.QualifiedGoIdent(rpcPackage.Ident("ClientGetter"))
+	serverRegister := g.QualifiedGoIdent(serverPackage.Ident("RegisterService"))
 
 	for _, service := range file.Services {
 		r := serviceRender{
-			service:  service,
-			pkgName:  pkg,
-			fileName: service.Desc.ParentFile().Path(),
+			service:        service,
+			pkgName:        pkg,
+			fileName:       service.Desc.ParentFile().Path(),
+			clientGetter:   clientGetter,
+			serverRegister: serverRegister,
 		}
 
 		g.P(r.render(file))
@@ -57,10 +69,36 @@ func genRpc(gen *protogen.Plugin, file *protogen.File) {
 	}
 }
 
+type rpcMethodInfo struct {
+	protoMethodName      string
+	methodName           string
+	name                 string
+	methodPath           string
+	handlerName          string
+	reqType              string
+	repType              string
+	streamIndex          int
+	streamParamName      string
+	serverStreamName     string
+	serverStreamTypeName string
+	isClientStream       bool
+	isServerStream       bool
+}
+
 type serviceRender struct {
-	service  *protogen.Service
-	pkgName  string
-	fileName string
+	service        *protogen.Service
+	pkgName        string
+	fileName       string
+	clientGetter   string
+	serverRegister string
+
+	serviceFullName     string
+	serviceName         string
+	serviceDesc         string
+	clientTypeName      string
+	clientInterfaceName string
+	serverInterfaceName string
+	rpcInfo             []rpcMethodInfo
 }
 
 func (s *serviceRender) render(file *protogen.File) string {
