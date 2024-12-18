@@ -1,63 +1,91 @@
 package cg
 
+import (
+	"strconv"
+)
+
 type Builder interface {
 	Build() string
 	String() string
 }
 
-type RawString string
-
-func (s RawString) Build() string {
-	return string(s)
+// P builds a pointer
+func P(t string) Builder {
+	return S("*" + t)
 }
 
-func (s RawString) String() string {
-	return s.Build()
+func DefineAssign(x string, y Builder) Builder {
+	return S(x + " := " + y.Build())
 }
 
-type ComposeBuilder []Builder
+func Ne(x, y string) Builder {
+	return S(x + " != " + y)
+}
 
-func (b ComposeBuilder) Build() string {
-	var s string
-	for _, builder := range b {
-		s += builder.Build() + "\n"
+func Eq(x, y string) Builder {
+	return S(x + " == " + y)
+}
+
+func Break() Builder {
+	return S("break")
+}
+
+func BreakLabel(name string) Builder {
+	return S("break" + name)
+}
+
+func Return(s ...Builder) Builder {
+	r := "return "
+
+	for i, v := range s {
+		r += v.Build()
+
+		if i != len(s)-1 {
+			r += ", "
+		}
 	}
-
-	return s
+	return S(r)
 }
 
-func (b ComposeBuilder) String() string {
-	return b.Build()
+func Variadic(name string) Builder {
+	return S("..." + name)
 }
 
-type BlockBuilder struct {
-	blockType  string
-	enclosed   bool
-	encloser   string
-	blockStart string
-	delimiter  string
-	title      Builder
-	bodies     []Builder
+func KV(key string, val Builder) Builder {
+	return S(key + ": " + val.Build())
 }
 
-func Const(items ...Builder) BlockBuilder {
-	return BlockBuilder{
-		blockType: "const",
-		encloser:  "()",
-		enclosed:  true,
-		bodies:    items,
+func Comment(msg string) Builder {
+	return S("// " + msg)
+}
+
+func Index(n string, i int) Builder {
+	return S(n + "[" + strconv.Itoa(i) + "]")
+}
+
+func Recv(r string, b Builder) Builder {
+	return S(r + " <- " + b.Build())
+}
+
+func Make(t Builder, args ...Builder) Builder {
+	s := "make(" + t.Build()
+
+	for _, a := range args {
+		s += ", " + a.Build()
 	}
+	s += ")"
+
+	return S(s)
 }
 
-func S(t string) RawString {
-	return RawString(t)
+func Chan(t Builder) Builder {
+	return S("chan " + t.Build())
 }
 
-func Array(name string) BlockBuilder {
-	return BlockBuilder{
-		title:     S(name),
-		enclosed:  true,
-		blockType: "[]",
-		delimiter: ";",
-	}
+func Go(t Builder) Builder {
+	return S("go " + t.Build())
+}
+
+func TypeAlias(name string, tp Builder) Builder {
+	return S("type " + name + " " + tp.Build())
 }
