@@ -3,6 +3,7 @@ package generator
 import (
 	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/generator/cg"
 	"google.golang.org/protobuf/compiler/protogen"
+	"strings"
 )
 
 type serviceRender struct {
@@ -23,12 +24,28 @@ type serviceRender struct {
 	rpcInfo             []rpcMethodInfo
 }
 
+func unexport(s string) string {
+	return strings.ToLower(s[:1]) + s[1:]
+}
+
 func (s *serviceRender) render() cg.Builder {
 	return cg.ComposeBuilder{}
 }
 
 func (s *serviceRender) renderClient() cg.Builder {
-	return cg.ComposeBuilder{}
+	s.serviceName = s.service.GoName
+	s.serviceFullName = string(s.service.Desc.FullName())
+	s.serverInterfaceName = s.serviceName + "Server"
+	s.serviceDesc = unexport(s.serviceName) + "ServiceDesc"
+	s.clientInterfaceName = s.serviceName + "Client"
+	s.clientTypeName = "wrapped" + s.clientInterfaceName
+
+	return cg.ComposeBuilder{
+		cg.Struct(s.clientTypeName).Body(cg.Param("cm", cg.S(s.clientGetter))),
+		cg.Func("New" + s.clientInterfaceName).Param(
+			cg.Param("cc", cg.S(s.qualified(grpcPackage.Ident("ClientConnInterface")))),
+		).Return(cg.S(s.clientInterfaceName)),
+	}
 }
 
 func (s *serviceRender) renderClientMethods() cg.Builder {
