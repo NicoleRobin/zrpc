@@ -3,6 +3,7 @@ package generator
 import (
 	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/generator/cg"
 	"google.golang.org/protobuf/compiler/protogen"
+	"strconv"
 	"strings"
 )
 
@@ -43,7 +44,7 @@ func (s *serviceRender) renderClient() cg.Builder {
 	return cg.ComposeBuilder{
 		cg.Struct(s.clientTypeName).Body(cg.Param("cm", cg.S(s.clientGetter))),
 		cg.Func("New" + s.clientInterfaceName).Param(
-			cg.Param("cc", cg.S(s.qualified(grpcPackage.Indent("ClientConnInterface")))),
+			cg.Param("cc", cg.S(s.qualified(grpcPackage.Ident("ClientConnInterface")))),
 		).Return(cg.S(s.clientInterfaceName)),
 	}
 }
@@ -81,10 +82,16 @@ func (s *serviceRender) renderServiceDesc() cg.Builder {
 }
 
 func (s *serviceRender) renderRPCNames() cg.Builder {
+	items := make([]cg.Builder, 0, len(s.rpcInfo))
+
+	for _, rpcInfo := range s.rpcInfo {
+		items = append(items, cg.Assign(cg.S(rpcInfo.name), cg.S(strconv.Quote(rpcInfo.methodPath))))
+	}
 	return cg.ComposeBuilder{}
 }
+
 func (s *serviceRender) renderTypeInfo() cg.Builder {
-	stmts := make([]cg.Builder, len(s.rpcInfo))
+	items := make([]cg.Builder, len(s.rpcInfo))
 
 	var (
 		fn          cg.RawString
@@ -97,9 +104,16 @@ func (s *serviceRender) renderTypeInfo() cg.Builder {
 		messageType = s.qualified(protoPackage.Ident("Message"))
 		newTypeFunc = cg.Func("").Return(cg.S(messageType))
 	}
+
 	for _, rpcInfo := range s.rpcInfo {
-		items = append(items, cg.RawString(rpcInfo.name))
+		info := cg.StructLiteral(s.qualified(rpcPackage.Ident("TypeInfo"))).Body(
+			cg.KV("Request", cg.Paren(cg.P(rpcInfo.reqType)).Call("nil")),
+			cg.KV("Returns", cg.Paren(cg.P(rpcInfo.reqType)).Call("nil")),
+			cg.KV("NewRequest", newTypeFunc.Body(cg.Return(cg.New(cg.S(rpcInfo.reqType))))),
+			cg.KV("NewRequest", newTypeFunc.Body(cg.Return(cg.New(cg.S(rpcInfo.reqType))))),
+		)
+		items = append(items, fn.Call(rpcInfo.name, info.String()))
 	}
 
-	return cg.Const(items)
+	return cg.Func("init").Body(items...)
 }

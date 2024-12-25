@@ -8,15 +8,15 @@ import (
 )
 
 const (
-	errorsPackage       = "errors"
-	contextPackage      = "context"
-	ioPackage           = "io"
-	syncPackage         = "sync"
-	grpcPackage         = "google.golang.org/grpc"
-	grpcStatusPackage   = "google.golang.org/grpc/status"
-	grpcCodesPackage    = "google.golang.org/grpc/codes"
-	grpcMetadataPackage = "google.golang.org/grpc/metadata"
-	protoPackage        = "google.golang.org/protobuf/proto"
+	errorsPackage       = protogen.GoImportPath("errors")
+	contextPackage      = protogen.GoImportPath("context")
+	ioPackage           = protogen.GoImportPath("io")
+	syncPackage         = protogen.GoImportPath("sync")
+	grpcPackage         = protogen.GoImportPath("google.golang.org/grpc")
+	grpcStatusPackage   = protogen.GoImportPath("google.golang.org/grpc/status")
+	grpcCodesPackage    = protogen.GoImportPath("google.golang.org/grpc/codes")
+	grpcMetadataPackage = protogen.GoImportPath("google.golang.org/grpc/metadata")
+	protoPackage        = protogen.GoImportPath("google.golang.org/protobuf/proto")
 	clientPackage       = protogen.GoImportPath("github.com/nicolerobin/zrpc/client")
 	serverPackage       = protogen.GoImportPath("github.com/nicolerobin/zrpc/server")
 	rpcPackage          = protogen.GoImportPath("github.com/nicolerobin/zrpc/core/rpc")

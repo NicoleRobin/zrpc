@@ -132,3 +132,11 @@ func InterfaceAPI(name string) FuncBuilder {
 	b.isType = true
 	return b
 }
+
+func Defer(b Builder) Builder {
+	return S("defer " + b.Build() + "\n")
+}
+
+func New(b Builder) Builder {
+	return S("new() " + b.Build() + ")")
+}
