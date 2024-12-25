@@ -43,7 +43,7 @@ func (s *serviceRender) renderClient() cg.Builder {
 	return cg.ComposeBuilder{
 		cg.Struct(s.clientTypeName).Body(cg.Param("cm", cg.S(s.clientGetter))),
 		cg.Func("New" + s.clientInterfaceName).Param(
-			cg.Param("cc", cg.S(s.qualified(grpcPackage.Ident("ClientConnInterface")))),
+			cg.Param("cc", cg.S(s.qualified(grpcPackage.Indent("ClientConnInterface")))),
 		).Return(cg.S(s.clientInterfaceName)),
 	}
 }
@@ -84,7 +84,19 @@ func (s *serviceRender) renderRPCNames() cg.Builder {
 	return cg.ComposeBuilder{}
 }
 func (s *serviceRender) renderTypeInfo() cg.Builder {
-	items := make([]cg.Builder, len(s.rpcInfo))
+	stmts := make([]cg.Builder, len(s.rpcInfo))
+
+	var (
+		fn          cg.RawString
+		messageType string
+		newTypeFunc cg.FuncBuilder
+	)
+
+	if len(s.rpcInfo) != 0 {
+		fn = cg.S(s.qualified(rpcPackage.Ident("RegisterTypeInfo")))
+		messageType = s.qualified(protoPackage.Ident("Message"))
+		newTypeFunc = cg.Func("").Return(cg.S(messageType))
+	}
 	for _, rpcInfo := range s.rpcInfo {
 		items = append(items, cg.RawString(rpcInfo.name))
 	}
