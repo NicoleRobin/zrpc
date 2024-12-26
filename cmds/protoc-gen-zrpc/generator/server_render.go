@@ -74,11 +74,85 @@ func (s *serviceRender) renderServerInterface() cg.Builder {
 }
 
 func (s *serviceRender) renderUnimplemented() cg.Builder {
-	return cg.ComposeBuilder{}
+	name := "Unimplemented" + s.serverInterfaceName
+
+	m := cg.Method("", cg.P(name))
+	methods := make(cg.ComposeBuilder, 0, len(s.rpcInfo))
+
+	var (
+		ctx, errFunc cg.RawString
+		code         string
+	)
+
+	if len(s.rpcInfo) != 0 {
+		ctx = cg.S(s.qualified(contextPackage.Ident("Context")))
+		errFunc = cg.S(s.qualified(grpcStatusPackage.Ident("Errorf")))
+		code = s.qualified(grpcCodesPackage.Ident("Unimplemented"))
+	}
+
+	for _, rpcInfo := range s.rpcInfo {
+		m = m.Name(rpcInfo.methodName)
+
+		err := errFunc.Call(code, strconv.Quote("method"+rpcInfo.methodName+" not implemented"))
+
+		if rpcInfo.isClientStream || rpcInfo.isServerStream {
+			m = m.Return(cg.S("error")).Body(cg.Return(err))
+
+			if !rpcInfo.isClientStream {
+				m = m.Param(
+					cg.Param("ctx", ctx),
+					cg.Param("req", cg.P(rpcInfo.reqType)),
+					cg.Param("stream", cg.S(rpcInfo.serverStreamName)),
+				)
+			} else {
+				m = m.Param(
+					cg.Param("ctx", ctx),
+					cg.Param("stream", cg.S(rpcInfo.serverStreamTypeName)),
+				)
+			}
+		} else {
+			m = m.Param(cg.Param("ctx", ctx), cg.Param(
+				"req", cg.P(rpcInfo.reqType),
+			)).Return(cg.P(rpcInfo.reqType), cg.S("error")).Body(cg.Return(cg.S("nil"), err))
+		}
+		methods = append(methods, m)
+	}
+
+	return cg.ComposeBuilder{
+		cg.Struct(name),
+		methods,
+	}
 }
 
 func (s *serviceRender) renderServiceDesc() cg.Builder {
-	return cg.ComposeBuilder{}
+	methods := make([]cg.Builder, 0, len(s.rpcInfo))
+	streams := make([]cg.Builder, 0)
+
+	for _, rpcInfo := range s.rpcInfo {
+		b := cg.StructLiteral("").Body(cg.KV("Handler", cg.S(rpcInfo.handlerName)))
+		method := strconv.Quote(rpcInfo.protoMethodName)
+
+		if rpcInfo.isServerStream || rpcInfo.isClientStream {
+			b = b.AppendBody(
+				cg.KV("StreamName", cg.S(method)),
+				cg.KV("ClientStream", cg.B(rpcInfo.isClientStream)),
+				cg.KV("ServerStream", cg.B(rpcInfo.isServerStream)),
+			)
+
+			streams = append(streams, b)
+		} else {
+			b = b.AppendBody(cg.KV("MethodName", cg.S(method)))
+			methods = append(methods, b)
+		}
+	}
+	return cg.Var(s.serviceDesc).Value(
+		cg.StructLiteral(s.qualified(grpcPackage.Ident("ServiceDesc"))).Body(
+			cg.KV("ServiceName", cg.S(strconv.Quote(s.serviceFullName))),
+			cg.KV("HandlerType", cg.Paren(cg.P(s.serverInterfaceName)).Call("nil")),
+			cg.KV("Methods", cg.Array(s.qualified(grpcPackage.Ident("MethodDesc"))).Body(methods...)),
+			cg.KV("Stream", cg.Array(s.qualified(grpcPackage.Ident("StreamDesc"))).Body(streams...)),
+			cg.KV("Metadata", cg.S(strconv.Quote(s.fileName))),
+		))
 }
 
 func (s *serviceRender) renderRPCNames() cg.Builder {

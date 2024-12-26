@@ -57,6 +57,7 @@ func (p ParamBuilder) Build() string {
 func (p ParamBuilder) String() string {
 	return p.Build()
 }
+
 func Var(name string) ParamBuilder {
 	return ParamBuilder{
 		name:  name,
