@@ -1,7 +1,10 @@
 package generator
 
 import (
+	"context"
+
 	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/constant"
+	"github.com/nicolerobin/zrpc/log"
 	"google.golang.org/protobuf/cmd/protoc-gen-go/internal_gengo"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/types/pluginpb"
@@ -23,27 +26,31 @@ const (
 )
 
 func Generate() {
+	ctx := context.Background()
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
 		gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
 		for _, f := range gen.Files {
+			log.InfoF(ctx, "f:%+v", f)
 			if f.Generate {
-				genFile(gen, f)
+				genFile(ctx, gen, f)
 			}
 		}
 		return nil
 	})
 }
 
-func genFile(gen *protogen.Plugin, f *protogen.File) {
-	genGo(gen, f)
-	genRpc(gen, f)
+func genFile(ctx context.Context, gen *protogen.Plugin, f *protogen.File) {
+	genGo(ctx, gen, f)
+	genRpc(ctx, gen, f)
 }
 
-func genGo(gen *protogen.Plugin, file *protogen.File) {
+func genGo(ctx context.Context, gen *protogen.Plugin, file *protogen.File) {
+	log.Info(ctx, "entrance")
 	internal_gengo.GenerateFile(gen, file)
 }
 
-func genRpc(gen *protogen.Plugin, file *protogen.File) {
+func genRpc(ctx context.Context, gen *protogen.Plugin, file *protogen.File) {
+	log.Info(ctx, "entrance")
 	if len(file.Services) == 0 {
 		return
 	}
@@ -63,6 +70,7 @@ func genRpc(gen *protogen.Plugin, file *protogen.File) {
 	serverRegister := generatedFile.QualifiedGoIdent(serverPackage.Ident("RegisterService"))
 
 	for _, service := range file.Services {
+		log.InfoF(ctx, "loop services, service:%+v", service)
 		r := serviceRender{
 			service:        service,
 			pkgName:        pkgName,

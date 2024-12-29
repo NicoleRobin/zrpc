@@ -1,10 +1,11 @@
 package generator
 
 import (
-	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/generator/cg"
-	"google.golang.org/protobuf/compiler/protogen"
 	"strconv"
 	"strings"
+
+	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/generator/cg"
+	"google.golang.org/protobuf/compiler/protogen"
 )
 
 type serviceRender struct {
@@ -30,7 +31,19 @@ func unexport(s string) string {
 }
 
 func (s *serviceRender) render() cg.Builder {
-	return cg.ComposeBuilder{}
+	return cg.ComposeBuilder{
+		s.renderClient(),
+		s.renderClientMethods(),
+		s.renderClientInterface(),
+		s.renderClientGetter(),
+		s.renderServiceRegister(),
+		s.renderServerHandler(),
+		s.renderServerInterface(),
+		s.renderUnimplemented(),
+		s.renderServiceDesc(),
+		s.renderRPCNames(),
+		s.renderTypeInfo(),
+	}
 }
 
 func (s *serviceRender) renderClient() cg.Builder {
@@ -45,19 +58,68 @@ func (s *serviceRender) renderClient() cg.Builder {
 		cg.Struct(s.clientTypeName).Body(cg.Param("cm", cg.S(s.clientGetter))),
 		cg.Func("New" + s.clientInterfaceName).Param(
 			cg.Param("cc", cg.S(s.qualified(grpcPackage.Ident("ClientConnInterface")))),
-		).Return(cg.S(s.clientInterfaceName)),
+		).Return(cg.S(s.clientInterfaceName)).Body(
+			cg.Return(cg.StructPointerLiteral(s.clientTypeName).Body(
+				cg.KV("cm", cg.S(s.qualified(rpcPackage.Ident("NewRawGetter"))).Call("cc")),
+			)),
+		),
+	}
+}
+
+func (s *serviceRender) renderClientGetter() cg.Builder {
+	getterName := "Get" + s.clientInterfaceName
+
+	gen := func(name, clientName string, args ...cg.ParamBuilder) cg.Builder {
+		return cg.Var(name).Value(cg.Func("").Param(args...).Return(cg.S(s.clientInterfaceName)).Body(
+			cg.Return(cg.StructPointerLiteral(s.clientTypeName).Body(
+				cg.KV("cm", cg.S(s.qualified(clientPackage.Ident("Get"))).Call(clientName)),
+			)),
+		))
+	}
+
+	named := "GetNamed" + s.clientInterfaceName
+
+	return cg.ComposeBuilder{
+		cg.Comment(getterName + " gets the default service client named " + s.pkgName),
+		gen(getterName, strconv.Quote(s.pkgName)),
+		cg.Comment(named + "gets the named service client specified by name."),
+		gen(named, "name", cg.Param("name", cg.S("string"))),
+		genClientMocker(s.serviceName, getterName, named),
 	}
 }
 
 func (s *serviceRender) renderClientMethods() cg.Builder {
-	return cg.ComposeBuilder{}
+	b := make(cg.ComposeBuilder, 0, len(s.service.Methods))
+	s.rpcInfo = make([]rpcMethodInfo, 0, len(s.service.Methods))
+
+	var streamCount int
+
+	for _, m := range s.service.Methods {
+		info := rpcMethodInfo{
+			protoMethodName: string(m.Desc.Name()),
+			methodName:      m.GoName,
+		}
+
+		method := cg.Method("w", cg.P(s.clientTypeName)).Name(m.GoName)
+		cm := method.Attr("cm")
+
+		var f cg.Builder
+		if !info.isClientStream && !info.isServerStream {
+			f = method.Param(
+				cg.Param("ctx", cg.S(s.qualified(contextPackage.Ident("Context")))),
+			).Return().Body()
+		} else {
+			info.streamIndex = streamCount
+
+		}
+
+		s.rpcInfo = append(s.rpcInfo, info)
+		b = append(b, f)
+	}
+	return b
 }
 
 func (s *serviceRender) renderClientInterface() cg.Builder {
-	return cg.ComposeBuilder{}
-}
-
-func (s *serviceRender) renderClientGetter() cg.Builder {
 	return cg.ComposeBuilder{}
 }
 
@@ -190,4 +252,43 @@ func (s *serviceRender) renderTypeInfo() cg.Builder {
 	}
 
 	return cg.Func("init").Body(items...)
+}
+
+func genClientMocker(serviceName, getterName, namedGetterName string) cg.Builder {
+	iface := serviceName + "Client"
+	structName := unexport(serviceName) + "Mocker"
+
+	method := cg.Method("m", cg.P(structName))
+
+	genMocker := func(name, attr, getter string, param cg.ParamBuilder) cg.Builder {
+		f := cg.Func("").Param(param).Return(cg.S(iface))
+
+		return method.Name(name).Param(
+			cg.Param("mocker", f.AsType()),
+		).Body(
+			cg.Assign(method.Attr(attr), cg.S(getter)),
+			cg.Assign(cg.S(getter), f.Body(
+				cg.Return(cg.Assert(cg.S("mocker").Call(param.Name()), cg.S(iface))),
+			)),
+		)
+	}
+
+	resetFuncBody := func(x, y string) cg.Builder {
+		return cg.If(cg.Ne(x, "nil")).Body(cg.Assign(cg.S(y), cg.S(x)))
+	}
+
+	exportName := serviceName + "Mocker"
+
+	return cg.ComposeBuilder{
+		cg.Struct(structName).Body(
+			cg.Param("defaultClient", cg.Func("").Return(cg.S(iface)).AsType()),
+			cg.Param("namedClient", cg.Func("").Param(cg.Param("", cg.S("string"))).Return(cg.S(iface)).AsType()),
+		),
+		genMocker("Mock", "defaultClient", getterName, cg.NoParam),
+		genMocker("MockNamed", "namedClient", namedGetterName, cg.Param("name", cg.S("string"))),
+		method.Name("Reset").Body(resetFuncBody("m.defaultClient", getterName)),
+		method.Name("ResetNamed").Body(resetFuncBody("m.namedClient", namedGetterName)),
+		cg.Comment(exportName + " is a mocker which is used to mock " + iface + "."),
+		cg.Var(exportName).Value(cg.New(cg.S(structName))),
+	}
 }
