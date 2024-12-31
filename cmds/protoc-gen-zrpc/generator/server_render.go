@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -98,19 +99,60 @@ func (s *serviceRender) renderClientMethods() cg.Builder {
 		info := rpcMethodInfo{
 			protoMethodName: string(m.Desc.Name()),
 			methodName:      m.GoName,
+			methodPath:      fmt.Sprintf("/%s/%s", s.service.Desc.FullName(), m.Desc.Name()),
+			handlerName:     fmt.Sprintf("%s%sHandler", unexport(s.serviceName), m.GoName),
+			name:            s.serviceName + "RPC_" + m.GoName,
+			reqType:         s.qualified(m.Input.GoIdent),
+			resType:         s.qualified(m.Output.GoIdent),
+			isClientStream:  m.Desc.IsStreamingClient(),
+			isServerStream:  m.Desc.IsStreamingServer(),
 		}
 
 		method := cg.Method("w", cg.P(s.clientTypeName)).Name(m.GoName)
 		cm := method.Attr("cm")
 
+		getClient := func(nilValue bool) cg.Builder {
+			b := cg.ComposeBuilder{
+				cg.Var("err").Type(cg.S("error")),
+				cg.Defer(cg.Func("").Body(cm.Attr("Close").Call("err")).Call()),
+				cg.DefineAssign("c, err", cm.Attr("GetClient").Call("ctx")),
+			}
+
+			var ret cg.Builder
+			if nilValue {
+				ret = cg.S("nil, err")
+			} else {
+				ret = cg.S("err")
+			}
+
+			return append(b, cg.If(cg.Ne("err", "nil")).Body(cg.Return(ret)))
+		}
+
 		var f cg.Builder
 		if !info.isClientStream && !info.isServerStream {
 			f = method.Param(
 				cg.Param("ctx", cg.S(s.qualified(contextPackage.Ident("Context")))),
-			).Return().Body()
+				cg.Param("in", cg.P(info.resType)),
+				cg.Param("opts", cg.Variadic(s.qualified(grpcPackage.Ident("CallOption")))),
+			).Return(
+				cg.P(info.resType),
+				cg.S("error"),
+			).Body(
+				getClient(true),
+				cg.DefineAssign("out", cg.New(cg.S(info.resType))),
+				cg.Assign("err", cg.S("c").Attr("Invoke").Call("ctx", strconv.Quote(info.methodPath), "in", "out", "opts...")),
+				cg.If(cg.Ne("err", "nil")).Body(cg.Return(cg.S("nil, err"))),
+				cg.Return(cg.S("out, nil")),
+			)
 		} else {
 			info.streamIndex = streamCount
+			info.streamParamName = s.serviceName + info.methodName + "Param"
+			info.serverStreamName = s.serviceName + info.methodName + "Stream"
+			info.serverStreamTypeName = unexport(info.serverStreamName)
 
+			streamCount++
+
+			f = s.renderStreamMethod(info, method, getClient(false))
 		}
 
 		s.rpcInfo = append(s.rpcInfo, info)
@@ -252,6 +294,96 @@ func (s *serviceRender) renderTypeInfo() cg.Builder {
 	}
 
 	return cg.Func("init").Body(items...)
+}
+
+func (s *serviceRender) renderStreamMethod(info rpcMethodInfo, method cg.FuncBuilder, clientGetter cg.Builder) cg.Builder {
+	errRet := cg.If(cg.S("err != nil")).Body(cg.Return(cg.S("err")))
+	eof := s.qualified(ioPackage.Ident("EOF"))
+
+	ctxType := cg.S(s.qualified(contextPackage.Ident("Context")))
+
+	f := method.Param(
+		cg.Param("ctx", ctxType),
+		cg.Param("param", cg.S(info.streamParamName)),
+		cg.Param("opts", cg.Variadic(s.qualified(grpcPackage.Ident("CallOption")))),
+	).Return(
+		cg.S("error"),
+	).Body(
+		clientGetter,
+	)
+
+	stream := cg.S("stream")
+	param := cg.S("param")
+
+	readLoop := cg.ComposeBuilder{
+		cg.Var("mctx").Type(ctxType),
+		cg.For("").Body(
+			cg.DefineAssign("msg", cg.New(cg.S(info.reqType))),
+			cg.Assign("err", stream.Attr("RecvMsg").Call("msg")),
+			cg.If(cg.Ne("err", eof)).Body(
+				cg.If(cg.Eq("err", eof)).Body(cg.Assign("err", cg.S("nil"))),
+				cg.Break(),
+			),
+			s.renderStreamCallOnMessage(true),
+		),
+	}
+
+	var body cg.Builder
+	switch {
+	case info.isServerStream && !info.isClientStream:
+		body = cg.ComposeBuilder{
+			cg.Assign("err", stream.Attr("SendMsg").Call(param.Attr("Req").String())),
+			errRet,
+			cg.Assign("err", stream.Attr("CloseSend").Call()),
+			errRet,
+			readLoop,
+			cg.Return(cg.S("err")),
+		}
+	case !info.isServerStream && info.isClientStream:
+		body = cg.ComposeBuilder{
+			s.renderStreamWriteLoop(),
+			errRet,
+			cg.DefineAssign("msg", cg.New(cg.S(info.reqType))),
+			cg.Assign("err", stream.Attr("RecvMsg").Call("msg")),
+			errRet,
+			cg.Var("mctx").Type(ctxType),
+			s.renderStreamCallOnMessage(false),
+			cg.Return(cg.S("nil")),
+		}
+	default:
+		f = f.AppendBody(
+			cg.DefineAssign("ctx, cancel", cg.S(s.qualified(contextPackage.Ident("WithCancel"))).Call("ctx")),
+			cg.Defer(cg.S("cancel").Call()),
+		)
+
+		body = cg.ComposeBuilder{
+			cg.DefineAssign("sendErr", cg.Make(cg.Chan(cg.S("error")), cg.S("1"))),
+			cg.DefineAssign("wait", cg.Make(cg.Chan(cg.S("struct{}")))),
+		}
+
+		body = cg.ComposeBuilder{}
+	}
+
+	return cg.ComposeBuilder{
+		s.renderStreamMethodParam(info),
+		f.AppendBody(s.wrapClientStreamHook(info, body)),
+	}
+}
+
+func (s *serviceRender) renderStreamCallOnMessage(isServerStream bool) cg.Builder {
+	return cg.ComposeBuilder{}
+}
+
+func (s *serviceRender) renderStreamMethodParam(info rpcMethodInfo) cg.Builder {
+	return cg.ComposeBuilder{}
+}
+
+func (s *serviceRender) wrapClientStreamHook(info rpcMethodInfo, body cg.Builder) cg.Builder {
+	return cg.ComposeBuilder{}
+}
+
+func (s *serviceRender) renderStreamWriteLoop() cg.Builder {
+	return cg.ComposeBuilder{}
 }
 
 func genClientMocker(serviceName, getterName, namedGetterName string) cg.Builder {

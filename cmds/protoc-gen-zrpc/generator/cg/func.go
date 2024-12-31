@@ -34,6 +34,11 @@ func (m FuncBuilder) Body(items ...Builder) FuncBuilder {
 	return m
 }
 
+func (m FuncBuilder) AppendBody(items ...Builder) FuncBuilder {
+	m.block = m.block.AppendBody(items...)
+	return m
+}
+
 func (m FuncBuilder) Param(items ...ParamBuilder) FuncBuilder {
 	m.params = items
 	return m
