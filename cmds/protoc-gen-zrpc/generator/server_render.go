@@ -162,7 +162,35 @@ func (s *serviceRender) renderClientMethods() cg.Builder {
 }
 
 func (s *serviceRender) renderClientInterface() cg.Builder {
-	return cg.ComposeBuilder{}
+	apis := make([]cg.Builder, 0, len(s.rpcInfo))
+
+	var ctx, callOption string
+	if len(s.rpcInfo) != 0 {
+		ctx = s.qualified(contextPackage.Ident("Context"))
+		callOption = s.qualified(grpcPackage.Ident("CallOption"))
+	}
+
+	for _, rpcInfo := range s.rpcInfo {
+		var api cg.Builder
+		if rpcInfo.isClientStream  || rpcInfo.isServerStream {
+			api = cg.InterfaceAPI(rpcInfo.methodName).Param(
+				cg.Param("ctx", cg.S(ctx)),
+				cg.Param("param", cg.S(rpcInfo.streamParamName)),
+				cg.Param("opts", cg.Variadic(callOption)),
+			).Return(cg.S("error"))
+		} else {
+			api = cg.InterfaceAPI(rpcInfo.methodName).Param(
+				cg.Param("ctx", cg.S(ctx)),
+				cg.Param("in", cg.P(rpcInfo.resType)),
+				cg.Param("opts", cg.Variadic(callOption)),
+			).Return(
+				cg.P(rpcInfo.resType),
+				cg.S("error"),
+			)
+		}
+		apis = append(apis, api)
+	}
+	return cg.Interface(s.clientInterfaceName).Body(apis...)
 }
 
 func (s *serviceRender) renderServiceRegister() cg.Builder {
@@ -170,11 +198,77 @@ func (s *serviceRender) renderServiceRegister() cg.Builder {
 }
 
 func (s *serviceRender) renderServerHandler() cg.Builder {
-	return cg.ComposeBuilder{}
+	b := make(cg.ComposeBuilder, 0, len(s.rpcInfo))
+
+	var ctx cg.RawString
+	if len(s.rpcInfo) != 0 {
+		ctx = cg.S(s.qualified(contextPackage.Ident("Context")))
+	}
+
+	f := func(name string) cg.FuncBuilder {
+		return cg.Func(name).Param(
+			cg.Param("srv", cg.S("interface{}")),
+			cg.Param("ctx", ctx),
+			cg.Param("dec", cg.Func("").Param(cg.Param("", cg.S("interface{}"))).Return(cg.S("error")).AsType()),
+			cg.Param("interceptor", cg.S(s.qualified(grpcPackage.Ident("UnaryServerInterceptor")))),
+		).Return(cg.S("interface{}"), cg.S("error"))
+	}
+
+	for _, rpcInfo := range s.rpcInfo {
+		var h cg.Builder
+		if rpcInfo.isClientStream  || rpcInfo.isServerStream {
+			h = cg.ComposeBuilder{
+				s.renderServerStreamType(rpcInfo),
+				s.renderServerStreamTypeImpl(rpcInfo),
+				s.renderServerStreamHandler(rpcInfo),
+			}
+		} else {
+			serverInfo := cg.StructPointerLiteral(s.qualified(grpcPackage.Ident("UnaryServerInfo"))).Body(
+				cg.KV("Server", cg.S("srv")),
+				cg.KV("FullMethod", cg.S(strconv.Quote(rpcInfo.methodPath))),
+			)
+		}
+		b = append(b, h)
+	}
+	return b
 }
 
 func (s *serviceRender) renderServerInterface() cg.Builder {
-	return cg.ComposeBuilder{}
+	apis := make([]cg.Builder, 0, len(s.rpcInfo))
+
+	var ctx cg.RawString
+	if len(s.rpcInfo) != 0 {
+		ctx = cg.S(s.qualified(contextPackage.Ident("Context")))
+	}
+
+	for _, rpcInfo := range s.rpcInfo {
+		api := cg.InterfaceAPI(rpcInfo.methodName)
+		if rpcInfo.isClientStream  || rpcInfo.isServerStream {
+			if !rpcInfo.isClientStream {
+				api = api.Param(
+					cg.Param("", ctx),
+					cg.Param("", cg.P(rpcInfo.reqType)),
+					cg.Param("", cg.S(rpcInfo.streamParamName)),
+				)
+			} else {
+				api = api.Param(
+					cg.Param("", ctx),
+					cg.Param("", cg.S(rpcInfo.serverStreamName)),
+				)
+			}
+			api = api.Return(cg.S("error"))
+		} else {
+			api = api.Param(
+				cg.Param("", ctx),
+				cg.Param("", cg.P(rpcInfo.reqType)),
+			).Return(
+				cg.P(rpcInfo.resType),
+				cg.S("error"),
+			)
+		}
+		apis = append(apis, api)
+	}
+	return cg.Interface(s.serverInterfaceName).Body(apis...)
 }
 
 func (s *serviceRender) renderUnimplemented() cg.Builder {
@@ -379,7 +473,16 @@ func (s *serviceRender) renderStreamMethodParam(info rpcMethodInfo) cg.Builder {
 }
 
 func (s *serviceRender) wrapClientStreamHook(info rpcMethodInfo, body cg.Builder) cg.Builder {
-	return cg.ComposeBuilder{}
+	hook := cg.S(s.qualified(grpcPackage.Ident("StreamClientHook")))
+	method := strconv.Quote(info.methodName)
+
+	return cg.ComposeBuilder{
+		cg.DefineAssign("desc", cg.Attr(s.serviceDesc).Attr(cg.Index("Streams", info.streamIndex).String()),
+		cg.Return(hook.Call("ctx", "c", "desc", method, cg.Func("").Param(
+			cg.Param("ctx", cg.S(s.qualified(contextPackage.Ident("Context")))),
+			cg.Param("stream", cg.S(s.qualified(grpcPackage.Ident("ClientStream")))),
+		).Return(cg.S("error")).Body(body).String(), "opts...")),
+	}
 }
 
 func (s *serviceRender) renderStreamWriteLoop() cg.Builder {

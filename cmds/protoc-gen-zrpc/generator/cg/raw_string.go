@@ -54,3 +54,7 @@ func Assign(x RawString, y Builder) RawString {
 func Assert(x, t Builder) RawString {
 	return S(x.Build() + ".(" + t.Build() + ")")
 }
+
+func Attr(t string) RawString {
+	return S("&" + t)
+}

@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"fmt"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -73,7 +74,7 @@ func Debug(ctx context.Context, msg string, fields ...zap.Field) {
 	defaultLogger.Debug(msg)
 }
 
-func DebugF(ctx context.Context, format string, args ...interface{}) {
+func Debugf(ctx context.Context, format string, args ...interface{}) {
 	defaultLogger.Debug(fmt.Sprintf(format, args...))
 }
 
@@ -81,7 +82,7 @@ func Info(ctx context.Context, msg string, fields ...zap.Field) {
 	defaultLogger.Info(msg)
 }
 
-func InfoF(ctx context.Context, format string, args ...interface{}) {
+func Infof(ctx context.Context, format string, args ...interface{}) {
 	defaultLogger.Info(fmt.Sprintf(format, args...))
 }
 
@@ -89,7 +90,7 @@ func Warn(ctx context.Context, msg string, fields ...zap.Field) {
 	defaultLogger.Warn(msg)
 }
 
-func WarnF(ctx context.Context, format string, args ...interface{}) {
+func Warnf(ctx context.Context, format string, args ...interface{}) {
 	defaultLogger.Warn(fmt.Sprintf(format, args...))
 }
 
@@ -97,6 +98,6 @@ func Error(ctx context.Context, msg string, fields ...zap.Field) {
 	defaultLogger.Error(msg)
 }
 
-func ErrorF(ctx context.Context, format string, args ...interface{}) {
+func Errorf(ctx context.Context, format string, args ...interface{}) {
 	defaultLogger.Debug(fmt.Sprintf(format, args...))
 }
