@@ -172,7 +172,7 @@ func (s *serviceRender) renderClientInterface() cg.Builder {
 
 	for _, rpcInfo := range s.rpcInfo {
 		var api cg.Builder
-		if rpcInfo.isClientStream  || rpcInfo.isServerStream {
+		if rpcInfo.isClientStream || rpcInfo.isServerStream {
 			api = cg.InterfaceAPI(rpcInfo.methodName).Param(
 				cg.Param("ctx", cg.S(ctx)),
 				cg.Param("param", cg.S(rpcInfo.streamParamName)),
@@ -216,7 +216,7 @@ func (s *serviceRender) renderServerHandler() cg.Builder {
 
 	for _, rpcInfo := range s.rpcInfo {
 		var h cg.Builder
-		if rpcInfo.isClientStream  || rpcInfo.isServerStream {
+		if rpcInfo.isClientStream || rpcInfo.isServerStream {
 			h = cg.ComposeBuilder{
 				s.renderServerStreamType(rpcInfo),
 				s.renderServerStreamTypeImpl(rpcInfo),
@@ -226,6 +226,20 @@ func (s *serviceRender) renderServerHandler() cg.Builder {
 			serverInfo := cg.StructPointerLiteral(s.qualified(grpcPackage.Ident("UnaryServerInfo"))).Body(
 				cg.KV("Server", cg.S("srv")),
 				cg.KV("FullMethod", cg.S(strconv.Quote(rpcInfo.methodPath))),
+			)
+
+			call := cg.Assert(cg.S("srv"), cg.S(s.serverInterfaceName)).Attr(rpcInfo.methodName).Call("ctx", "in")
+
+			h = f(rpcInfo.handlerName).Body(
+				cg.DefineAssign("in", cg.New(cg.S(rpcInfo.reqType))),
+				cg.If(cg.S("err := dec(in); err != nil")).Body(cg.Return(cg.S("nil, err"))),
+				cg.If(cg.S("interceptor == nil")).Body(cg.Return(call)),
+				cg.DefineAssign("info", serverInfo),
+				cg.DefineAssign("handler", cg.Func("").Param(
+					cg.Param("ctx", ctx),
+					cg.Param("req", cg.S("interface{}")),
+				).Return(cg.S("interface{}"), cg.S("error")).Body(cg.Return(call))),
+				cg.Return(cg.S("interceptor").Call("ctx", "in", "info", "handler")),
 			)
 		}
 		b = append(b, h)
@@ -243,7 +257,7 @@ func (s *serviceRender) renderServerInterface() cg.Builder {
 
 	for _, rpcInfo := range s.rpcInfo {
 		api := cg.InterfaceAPI(rpcInfo.methodName)
-		if rpcInfo.isClientStream  || rpcInfo.isServerStream {
+		if rpcInfo.isClientStream || rpcInfo.isServerStream {
 			if !rpcInfo.isClientStream {
 				api = api.Param(
 					cg.Param("", ctx),
@@ -269,6 +283,184 @@ func (s *serviceRender) renderServerInterface() cg.Builder {
 		apis = append(apis, api)
 	}
 	return cg.Interface(s.serverInterfaceName).Body(apis...)
+}
+
+func (s *serviceRender) renderServerStreamType(info rpcMethodInfo) cg.Builder {
+	md := cg.S(s.qualified(grpcMetadataPackage.Ident("md")))
+
+	b := cg.Interface(info.serverStreamName).Body(
+		cg.InterfaceAPI("SetHeader").Param(cg.Param("", md)).Return(cg.S("error")),
+		cg.InterfaceAPI("SendHeader").Param(cg.Param("", md)).Return(cg.S("error")),
+	)
+
+	send := cg.InterfaceAPI("Send").Param(cg.Param("", cg.P(info.reqType))).Return(cg.S("error"))
+
+	switch {
+	case info.isServerStream && !info.isClientStream:
+	case !info.isServerStream && info.isClientStream:
+	default:
+		b = b.AppendBody(
+			send,
+			cg.InterfaceAPI("OnMessage").Param(
+				cg.Param("", cg.Func("").Param(
+					cg.Param("", cg.P(info.reqType)),
+					cg.Param("", cg.S("error")),
+				).AsType()),
+			),
+			cg.InterfaceAPI("Finish").Return(cg.S("error")),
+		)
+	}
+	return b
+}
+
+func (s *serviceRender) renderServerStreamTypeImpl(info rpcMethodInfo) cg.Builder {
+	b := cg.Struct(info.serverStreamTypeName).Body(
+		cg.Param("stream", cg.S(s.qualified(grpcPackage.Ident("ServerStream")))),
+	)
+
+	m := cg.Method("s", cg.P(info.serverStreamTypeName))
+	stream := cg.S("s").Attr("stream")
+	errRet := cg.If(cg.Ne("err", "nil")).Body(cg.Return(cg.S("nil, err")))
+
+	header := func(name string) cg.Builder {
+		return m.Name(name).Param(
+			cg.Param("md", cg.S(s.qualified(grpcMetadataPackage.Ident("MD")))),
+		).Return(
+			cg.Return(stream.Attr(name).Call("md")),
+		)
+	}
+
+	headerFunc := cg.ComposeBuilder{
+		header("SetHeader"),
+		header("SendHeader"),
+	}
+
+	send := m.Name("Send").Param(
+		cg.Param("msg", cg.P(info.reqType)),
+	).Return(
+		cg.Return(stream.Attr("SendMsg").Call("msg")),
+	)
+
+	switch {
+	case !info.isClientStream:
+		return cg.ComposeBuilder{b, headerFunc, send}
+	case !info.isServerStream:
+		return cg.ComposeBuilder{
+			b,
+			headerFunc,
+			m.Name("Recv").Return(cg.P(info.reqType), cg.S("error")).Body(
+				cg.DefineAssign("msg", cg.New(cg.S(info.reqType))),
+				cg.DefineAssign("err", stream.Attr("RecvMsg").Call("msg")),
+				errRet,
+				cg.Return(cg.S("msg, nil")),
+			),
+			m.Name("Finish").Param(cg.Param("msg", cg.P(info.reqType))).Return(cg.S("error")).Body(
+				cg.Return(stream.Attr("SendMsg").Call("msg")),
+			),
+		}
+	default:
+		b = b.AppendBody(
+			cg.Param("recvErr", cg.Chan(cg.S("error"))),
+			cg.Param("sendErr", cg.Chan(cg.S("error"))),
+			cg.Param("wait", cg.S(s.qualified(syncPackage.Ident("WaitGroup")))),
+		)
+
+		send = send.Body(
+			cg.DefineAssign("err", stream.Attr("SendMsg").Call("msg")),
+			cg.If(cg.Ne("err", "nil")).Body(
+				cg.Select().Body(
+					cg.Case(cg.Recv("s.sendErr", cg.S("err"))),
+					cg.Default(),
+				),
+			),
+			cg.Return(cg.S("err")),
+		)
+
+		onMessage := m.Name("OnMessage").Param(
+			cg.Param("f", cg.Func("").Param(
+				cg.Param("", cg.P(info.reqType)),
+				cg.Param("", cg.S("error")),
+			).AsType()),
+		).Body(
+			cg.S("s.wait").Attr("Add").Call("1"),
+			cg.Go(cg.Func("").Body(
+				cg.Defer(cg.S("s.wait").Attr("Done").Call()),
+				cg.DefineAssign("err", stream.Attr("RecvMsg").Call("in")),
+				cg.S("f").Call("in", "err"),
+				cg.If(cg.Ne("err", "nil")).Body(
+					cg.If(cg.Ne("err", s.qualified(ioPackage.Ident("EOF")))).Body(
+						cg.Recv("s.recvErr", cg.S("err")),
+					),
+					cg.Break(),
+				),
+			).Call()),
+		)
+
+		selector := func(name string) cg.Builder {
+			return cg.Select().Body(
+				cg.Case(cg.Assign("err", cg.Recv("", cg.S(name)))),
+				cg.Default(),
+			)
+		}
+
+		finish := m.Name("Finish").Return(cg.S("error")).Body(
+			cg.S("s.wait").Attr("Wait").Call(),
+			cg.Var("err").Type(cg.S("error")),
+			selector("s.sendErr"),
+			cg.If(cg.Eq("err", "nil")).Body(selector("s.recvErr")),
+			cg.Return(cg.S("err")),
+		)
+
+		return cg.ComposeBuilder{b, headerFunc, send, onMessage, finish}
+	}
+}
+
+func (s *serviceRender) renderServerStreamHandler(info rpcMethodInfo) cg.Builder {
+	b := cg.Func(info.handlerName).Param(
+		cg.Param("srv", cg.S("interface{}")),
+		cg.Param("stream", cg.S(s.qualified(grpcPackage.Ident("ServerStream")))),
+	).Return(cg.S("error"))
+
+	handler := cg.Assert(cg.S("srv"), cg.S(s.serverInterfaceName)).Attr(info.methodName)
+
+	wrapper := cg.StructPointerLiteral(info.serverStreamTypeName).Body(
+		cg.KV("stream", cg.S("stream")),
+	)
+
+	mkChan := func(name string) cg.Builder {
+		return cg.KV(name, cg.Make(cg.Chan(cg.S("error")), cg.S("1")))
+	}
+
+	if info.isClientStream && info.isServerStream {
+		wrapper = wrapper.AppendBody(mkChan("recvErr"), mkChan("sendErr"))
+	}
+
+	streamWrapper := wrapper.String()
+
+	switch {
+	case !info.isClientStream:
+		b = b.Body(s.wrapClientStreamHook(info, cg.ComposeBuilder{
+			cg.DefineAssign("m", cg.New(cg.S(info.reqType))),
+			cg.DefineAssign("err", cg.S("stream").Attr("RecvMsg").Call("m")),
+			cg.If(cg.Ne("err", "nil")).Body(cg.Return(cg.S("err"))),
+			cg.Return(handler.Call("ctx", "m", streamWrapper)),
+		}))
+
+	default:
+		b = b.Body(s.wrapServerStreamHook(info, cg.Return(handler.Call("ctx", "m", streamWrapper))))
+	}
+
+	return b
+}
+
+func (s *serviceRender) wrapServerStreamHook(info rpcMethodInfo, body cg.Builder) cg.Builder {
+	hook := cg.S(s.qualified(grpcPackage.Ident("StreamServerHook")))
+	streamInfo := cg.StructLiteral(s.qualified(grpcPackage.Ident("StreamInfo"))).Body().String()
+	fn := cg.Func("").Param(
+		cg.Param("ctx", cg.S(s.qualified(contextPackage.Ident("Context")))),
+	).Return(cg.S("error")).Body(body).String()
+
+	return cg.Return(hook.Call("stream.Context()", streamInfo, fn))
 }
 
 func (s *serviceRender) renderUnimplemented() cg.Builder {
@@ -464,12 +656,65 @@ func (s *serviceRender) renderStreamMethod(info rpcMethodInfo, method cg.FuncBui
 	}
 }
 
-func (s *serviceRender) renderStreamCallOnMessage(isServerStream bool) cg.Builder {
-	return cg.ComposeBuilder{}
+func (s *serviceRender) renderStreamCallOnMessage(useBreak bool) cg.Builder {
+	stream := cg.S("stream")
+	param := cg.S("param")
+	onMessage := param.Attr("OnMessage")
+
+	var errAction cg.Builder
+
+	if useBreak {
+		errAction = cg.If(cg.Ne("err", "nil")).Body(cg.Break())
+	} else {
+		errAction = cg.If(cg.Ne("err", "nil")).Body(cg.Return(cg.S("err")))
+	}
+
+	return cg.If(cg.Ne(onMessage.String(), "nil")).Body(
+		cg.If(cg.Ne("mctx", "nil")).Body(
+			cg.Var("md").Type(cg.S(s.qualified(grpcMetadataPackage.Ident("MD")))),
+			cg.Assign("md, err", stream.Attr("Header").Call()),
+			errAction,
+			cg.Assign("mctx", cg.S(s.qualified(grpcPackage.Ident("WithMetadata"))).Call("ctx", "md")),
+		),
+		onMessage.Call("mctx", "msg"),
+	)
 }
 
 func (s *serviceRender) renderStreamMethodParam(info rpcMethodInfo) cg.Builder {
-	return cg.ComposeBuilder{}
+	generatorFuncName := s.serviceName + info.methodName + "Generator"
+	generatorIfaceName := unexport(generatorFuncName)
+
+	onMessage := cg.Func("").Param(
+		cg.Param("", cg.S(s.qualified(contextPackage.Ident("Context")))),
+		cg.Param("", cg.P(info.resType)),
+	).AsType()
+
+	b := cg.Struct(info.streamParamName)
+
+	if !info.isClientStream {
+		return b.Body(
+			cg.Param("Req", cg.P(info.reqType)),
+			cg.Param("OnMessage", onMessage),
+		)
+	}
+
+	nextReturns := []cg.Builder{cg.P(info.reqType), cg.S("bool")}
+	nextType := cg.Func("").Return(nextReturns...).AsType()
+
+	return cg.ComposeBuilder{
+		cg.Interface(generatorIfaceName).Body(
+			cg.InterfaceAPI("Next").Return(nextReturns...),
+		),
+		cg.TypeAlias(generatorFuncName, nextType),
+		cg.Method("g", cg.S(generatorFuncName)).Name("Next").Return(nextReturns...).Body(
+			cg.Return(cg.S("g").Call()),
+		),
+		b.Body(
+			cg.Param("Req", cg.Recv("", cg.Chan(cg.P(info.reqType)))),
+			cg.Param("GenReq", cg.S(generatorIfaceName)),
+			cg.Param("OnMessage", onMessage),
+		),
+	}
 }
 
 func (s *serviceRender) wrapClientStreamHook(info rpcMethodInfo, body cg.Builder) cg.Builder {

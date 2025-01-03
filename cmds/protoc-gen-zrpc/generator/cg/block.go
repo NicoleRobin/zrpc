@@ -110,7 +110,7 @@ func Case(selector Builder) BlockBuilder {
 	}
 }
 
-func Default(selector Builder) BlockBuilder {
+func Default() BlockBuilder {
 	return BlockBuilder{
 		blockType:  "default",
 		title:      S(""),
