@@ -29,6 +29,7 @@ var defaultLogger *zap.Logger
 
 func newConfig() zap.Config {
 	encoderConf := zap.NewProductionEncoderConfig()
+	encoderConf.FunctionKey = "function"
 	encoderConf.EncodeTime = zapcore.RFC3339TimeEncoder
 
 	logConf := zap.NewProductionConfig()
@@ -71,7 +72,7 @@ func getDefaultLogger() *zap.Logger {
 }
 
 func Debug(ctx context.Context, msg string, fields ...zap.Field) {
-	defaultLogger.Debug(msg)
+	defaultLogger.Debug(msg, fields...)
 }
 
 func Debugf(ctx context.Context, format string, args ...interface{}) {
@@ -79,7 +80,7 @@ func Debugf(ctx context.Context, format string, args ...interface{}) {
 }
 
 func Info(ctx context.Context, msg string, fields ...zap.Field) {
-	defaultLogger.Info(msg)
+	defaultLogger.Info(msg, fields...)
 }
 
 func Infof(ctx context.Context, format string, args ...interface{}) {
@@ -87,7 +88,7 @@ func Infof(ctx context.Context, format string, args ...interface{}) {
 }
 
 func Warn(ctx context.Context, msg string, fields ...zap.Field) {
-	defaultLogger.Warn(msg)
+	defaultLogger.Warn(msg, fields...)
 }
 
 func Warnf(ctx context.Context, format string, args ...interface{}) {
@@ -95,7 +96,7 @@ func Warnf(ctx context.Context, format string, args ...interface{}) {
 }
 
 func Error(ctx context.Context, msg string, fields ...zap.Field) {
-	defaultLogger.Error(msg)
+	defaultLogger.Error(msg, fields...)
 }
 
 func Errorf(ctx context.Context, format string, args ...interface{}) {

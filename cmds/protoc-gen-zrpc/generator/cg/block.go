@@ -1,6 +1,10 @@
 package cg
 
-import "strings"
+import (
+	"context"
+	"github.com/nicolerobin/zrpc/log"
+	"strings"
+)
 
 type BlockBuilder struct {
 	blockType  string
@@ -18,6 +22,12 @@ func (b BlockBuilder) Body(items ...Builder) BlockBuilder {
 }
 
 func (b BlockBuilder) AppendBody(items ...Builder) BlockBuilder {
+	for _, item := range items {
+		if item == nil {
+			panic("item is nil")
+		}
+	}
+
 	bs := make([]Builder, len(b.bodies)+len(items))
 	n := copy(bs, b.bodies)
 	copy(bs[n:], items)
@@ -26,6 +36,7 @@ func (b BlockBuilder) AppendBody(items ...Builder) BlockBuilder {
 }
 
 func (b BlockBuilder) Build() string {
+	log.Info(context.Background(), "entrance")
 	s := b.blockType
 	if b.title != nil {
 		s += " " + b.title.Build()
@@ -61,6 +72,7 @@ func (b BlockBuilder) Build() string {
 }
 
 func (b BlockBuilder) String() string {
+	log.Info(context.Background(), "entrance")
 	return b.Build()
 }
 
@@ -78,7 +90,7 @@ func Array(name string) BlockBuilder {
 		title:     S(name),
 		enclosed:  true,
 		blockType: "[]",
-		delimiter: ";",
+		delimiter: ",",
 	}
 }
 

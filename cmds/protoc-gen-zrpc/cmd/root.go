@@ -4,10 +4,10 @@ Copyright © 2024 robin zhang
 package cmd
 
 import (
-	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/constant"
-	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/generator"
 	"os"
 
+	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/constant"
+	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/generator"
 	"github.com/spf13/cobra"
 )
 

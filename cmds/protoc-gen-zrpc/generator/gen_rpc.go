@@ -2,9 +2,10 @@ package generator
 
 import (
 	"context"
+	"github.com/nicolerobin/zrpc/log"
+	"go.uber.org/zap"
 
 	"github.com/nicolerobin/zrpc/cmds/protoc-gen-zrpc/constant"
-	"github.com/nicolerobin/zrpc/log"
 	"google.golang.org/protobuf/compiler/protogen"
 )
 
@@ -43,8 +44,8 @@ func genRpc(ctx context.Context, gen *protogen.Plugin, file *protogen.File) {
 	clientGetter := generatedFile.QualifiedGoIdent(rpcPackage.Ident("ClientGetter"))
 	serverRegister := generatedFile.QualifiedGoIdent(serverPackage.Ident("RegisterService"))
 
-	for _, service := range file.Services {
-		log.Infof(ctx, "loop services, service:%+v", service)
+	for i, service := range file.Services {
+		log.Info(ctx, "loop services", zap.Int("i", i), zap.String("service.GoName", service.GoName))
 		r := serviceRender{
 			service:        service,
 			pkgName:        pkgName,
@@ -53,7 +54,6 @@ func genRpc(ctx context.Context, gen *protogen.Plugin, file *protogen.File) {
 			serverRegister: serverRegister,
 			qualified:      generatedFile.QualifiedGoIdent,
 		}
-
 		generatedFile.P(r.render())
 		generatedFile.P()
 	}

@@ -11,13 +11,6 @@ type ParamBuilder struct {
 
 var NoParam = ParamBuilder{}
 
-func Param(name string, t Builder) ParamBuilder {
-	return ParamBuilder{
-		name:      name,
-		paramType: t,
-	}
-}
-
 func (p ParamBuilder) Type(t Builder) ParamBuilder {
 	p.paramType = t
 	return p
@@ -56,6 +49,13 @@ func (p ParamBuilder) Build() string {
 
 func (p ParamBuilder) String() string {
 	return p.Build()
+}
+
+func Param(name string, t Builder) ParamBuilder {
+	return ParamBuilder{
+		name:      name,
+		paramType: t,
+	}
 }
 
 func Var(name string) ParamBuilder {

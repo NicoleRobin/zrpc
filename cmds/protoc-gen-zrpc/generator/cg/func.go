@@ -1,6 +1,10 @@
 package cg
 
-import "strings"
+import (
+	"context"
+	"github.com/nicolerobin/zrpc/log"
+	"strings"
+)
 
 // FuncBuilder defines a builder for function.
 type FuncBuilder struct {
@@ -63,6 +67,8 @@ func (m FuncBuilder) AsType() FuncBuilder {
 }
 
 func (m FuncBuilder) Build() string {
+	log.Info(context.Background(), "entrance")
+
 	var s string
 	if !m.isInterface {
 		s += "func "
@@ -111,6 +117,7 @@ func (m FuncBuilder) Build() string {
 }
 
 func (m FuncBuilder) String() string {
+	log.Info(context.Background(), "entrance")
 	return m.Build()
 }
 
@@ -143,5 +150,5 @@ func Defer(b Builder) Builder {
 }
 
 func New(b Builder) Builder {
-	return S("new() " + b.Build() + ")")
+	return S("new(" + b.Build() + ")")
 }

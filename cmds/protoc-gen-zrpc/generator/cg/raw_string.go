@@ -1,14 +1,20 @@
 package cg
 
-import "strings"
+import (
+	"context"
+	"github.com/nicolerobin/zrpc/log"
+	"strings"
+)
 
 type RawString string
 
 func (s RawString) Build() string {
+	log.Info(context.Background(), "entrance")
 	return string(s)
 }
 
 func (s RawString) String() string {
+	log.Info(context.Background(), "entrance")
 	return s.Build()
 }
 

@@ -1,6 +1,10 @@
 package cg
 
-import "strings"
+import (
+	"context"
+	"github.com/nicolerobin/zrpc/log"
+	"strings"
+)
 
 type IfBuilder struct {
 	ifBlock   BlockBuilder
@@ -27,6 +31,7 @@ func (i IfBuilder) Else(bodies ...Builder) IfBuilder {
 }
 
 func (i IfBuilder) Build() string {
+	log.Info(context.Background(), "entrance")
 	b := i.ifBlock.Build()
 
 	if i.elseBlock.blockType == "" {
@@ -36,6 +41,7 @@ func (i IfBuilder) Build() string {
 }
 
 func (i IfBuilder) String() string {
+	log.Info(context.Background(), "entrance")
 	return i.Build()
 }
 

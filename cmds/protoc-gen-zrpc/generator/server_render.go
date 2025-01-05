@@ -1,7 +1,9 @@
 package generator
 
 import (
+	"context"
 	"fmt"
+	"github.com/nicolerobin/zrpc/log"
 	"strconv"
 	"strings"
 
@@ -48,6 +50,7 @@ func (s *serviceRender) render() cg.Builder {
 }
 
 func (s *serviceRender) renderClient() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	s.serviceName = s.service.GoName
 	s.serviceFullName = string(s.service.Desc.FullName())
 	s.serverInterfaceName = s.serviceName + "Server"
@@ -68,6 +71,7 @@ func (s *serviceRender) renderClient() cg.Builder {
 }
 
 func (s *serviceRender) renderClientGetter() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	getterName := "Get" + s.clientInterfaceName
 
 	gen := func(name, clientName string, args ...cg.ParamBuilder) cg.Builder {
@@ -90,6 +94,7 @@ func (s *serviceRender) renderClientGetter() cg.Builder {
 }
 
 func (s *serviceRender) renderClientMethods() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	b := make(cg.ComposeBuilder, 0, len(s.service.Methods))
 	s.rpcInfo = make([]rpcMethodInfo, 0, len(s.service.Methods))
 
@@ -132,7 +137,7 @@ func (s *serviceRender) renderClientMethods() cg.Builder {
 		if !info.isClientStream && !info.isServerStream {
 			f = method.Param(
 				cg.Param("ctx", cg.S(s.qualified(contextPackage.Ident("Context")))),
-				cg.Param("in", cg.P(info.resType)),
+				cg.Param("in", cg.P(info.reqType)),
 				cg.Param("opts", cg.Variadic(s.qualified(grpcPackage.Ident("CallOption")))),
 			).Return(
 				cg.P(info.resType),
@@ -162,6 +167,7 @@ func (s *serviceRender) renderClientMethods() cg.Builder {
 }
 
 func (s *serviceRender) renderClientInterface() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	apis := make([]cg.Builder, 0, len(s.rpcInfo))
 
 	var ctx, callOption string
@@ -181,7 +187,7 @@ func (s *serviceRender) renderClientInterface() cg.Builder {
 		} else {
 			api = cg.InterfaceAPI(rpcInfo.methodName).Param(
 				cg.Param("ctx", cg.S(ctx)),
-				cg.Param("in", cg.P(rpcInfo.resType)),
+				cg.Param("in", cg.P(rpcInfo.reqType)),
 				cg.Param("opts", cg.Variadic(callOption)),
 			).Return(
 				cg.P(rpcInfo.resType),
@@ -194,10 +200,39 @@ func (s *serviceRender) renderClientInterface() cg.Builder {
 }
 
 func (s *serviceRender) renderServiceRegister() cg.Builder {
-	return cg.ComposeBuilder{}
+	log.Info(context.Background(), "entrance")
+	registerName := unexport(s.serviceName) + "ServiceRegister"
+	registerFuncName := "Register" + s.serverInterfaceName
+	registerServiceName := s.serviceName + "Service"
+
+	return cg.ComposeBuilder{
+		cg.Func(registerFuncName).Param(
+			cg.Param("s", cg.S(s.qualified(grpcPackage.Ident("ServiceRegistrar")))),
+			cg.Param("srv", cg.S(s.serverInterfaceName)),
+		).Body(
+			cg.S("s").Attr("RegisterService").Call(cg.Attr(s.serviceDesc).String(), "srv"),
+		),
+		cg.Struct(registerName),
+
+		cg.Method("s", cg.P(registerName)).Name("RegisterService").Param(
+			cg.Param("server", cg.S(s.qualified(grpcPackage.Ident("ServiceRegistrar")))),
+			cg.Param("handler", cg.S("interface{}")),
+		).Body(
+			cg.S(registerFuncName).Call("server", cg.Assert(cg.S("handler"), cg.S(s.serverInterfaceName)).String()),
+		),
+
+		cg.Var(registerServiceName).Value(cg.StructPointerLiteral(registerName)),
+
+		cg.Func("RegisterZrpc" + s.serverInterfaceName).Param(
+			cg.Param("srv", cg.S(s.serverInterfaceName)),
+		).Body(
+			cg.S(s.serverRegister).Call(registerServiceName, "srv"),
+		),
+	}
 }
 
 func (s *serviceRender) renderServerHandler() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	b := make(cg.ComposeBuilder, 0, len(s.rpcInfo))
 
 	var ctx cg.RawString
@@ -248,6 +283,7 @@ func (s *serviceRender) renderServerHandler() cg.Builder {
 }
 
 func (s *serviceRender) renderServerInterface() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	apis := make([]cg.Builder, 0, len(s.rpcInfo))
 
 	var ctx cg.RawString
@@ -464,6 +500,7 @@ func (s *serviceRender) wrapServerStreamHook(info rpcMethodInfo, body cg.Builder
 }
 
 func (s *serviceRender) renderUnimplemented() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	name := "Unimplemented" + s.serverInterfaceName
 
 	m := cg.Method("", cg.P(name))
@@ -515,6 +552,7 @@ func (s *serviceRender) renderUnimplemented() cg.Builder {
 }
 
 func (s *serviceRender) renderServiceDesc() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	methods := make([]cg.Builder, 0, len(s.rpcInfo))
 	streams := make([]cg.Builder, 0)
 
@@ -540,22 +578,24 @@ func (s *serviceRender) renderServiceDesc() cg.Builder {
 			cg.KV("ServiceName", cg.S(strconv.Quote(s.serviceFullName))),
 			cg.KV("HandlerType", cg.Paren(cg.P(s.serverInterfaceName)).Call("nil")),
 			cg.KV("Methods", cg.Array(s.qualified(grpcPackage.Ident("MethodDesc"))).Body(methods...)),
-			cg.KV("Stream", cg.Array(s.qualified(grpcPackage.Ident("StreamDesc"))).Body(streams...)),
+			cg.KV("Streams", cg.Array(s.qualified(grpcPackage.Ident("StreamDesc"))).Body(streams...)),
 			cg.KV("Metadata", cg.S(strconv.Quote(s.fileName))),
 		))
 }
 
 func (s *serviceRender) renderRPCNames() cg.Builder {
+	log.Info(context.Background(), "entrance")
 	items := make([]cg.Builder, 0, len(s.rpcInfo))
 
 	for _, rpcInfo := range s.rpcInfo {
 		items = append(items, cg.Assign(cg.S(rpcInfo.name), cg.S(strconv.Quote(rpcInfo.methodPath))))
 	}
-	return cg.ComposeBuilder{}
+	return cg.Const(items...)
 }
 
 func (s *serviceRender) renderTypeInfo() cg.Builder {
-	items := make([]cg.Builder, len(s.rpcInfo))
+	log.Info(context.Background(), "entrance")
+	items := make([]cg.Builder, 0, len(s.rpcInfo))
 
 	var (
 		fn          cg.RawString
@@ -572,17 +612,17 @@ func (s *serviceRender) renderTypeInfo() cg.Builder {
 	for _, rpcInfo := range s.rpcInfo {
 		info := cg.StructLiteral(s.qualified(rpcPackage.Ident("TypeInfo"))).Body(
 			cg.KV("Request", cg.Paren(cg.P(rpcInfo.reqType)).Call("nil")),
-			cg.KV("Returns", cg.Paren(cg.P(rpcInfo.reqType)).Call("nil")),
+			cg.KV("Returns", cg.Paren(cg.P(rpcInfo.resType)).Call("nil")),
 			cg.KV("NewRequest", newTypeFunc.Body(cg.Return(cg.New(cg.S(rpcInfo.reqType))))),
-			cg.KV("NewRequest", newTypeFunc.Body(cg.Return(cg.New(cg.S(rpcInfo.reqType))))),
+			cg.KV("NewReturns", newTypeFunc.Body(cg.Return(cg.New(cg.S(rpcInfo.resType))))),
 		)
 		items = append(items, fn.Call(rpcInfo.name, info.String()))
 	}
-
 	return cg.Func("init").Body(items...)
 }
 
 func (s *serviceRender) renderStreamMethod(info rpcMethodInfo, method cg.FuncBuilder, clientGetter cg.Builder) cg.Builder {
+	log.Info(context.Background(), "entrance")
 	errRet := cg.If(cg.S("err != nil")).Body(cg.Return(cg.S("err")))
 	eof := s.qualified(ioPackage.Ident("EOF"))
 
@@ -657,6 +697,7 @@ func (s *serviceRender) renderStreamMethod(info rpcMethodInfo, method cg.FuncBui
 }
 
 func (s *serviceRender) renderStreamCallOnMessage(useBreak bool) cg.Builder {
+	log.Info(context.Background(), "entrance")
 	stream := cg.S("stream")
 	param := cg.S("param")
 	onMessage := param.Attr("OnMessage")
@@ -681,6 +722,7 @@ func (s *serviceRender) renderStreamCallOnMessage(useBreak bool) cg.Builder {
 }
 
 func (s *serviceRender) renderStreamMethodParam(info rpcMethodInfo) cg.Builder {
+	log.Info(context.Background(), "entrance")
 	generatorFuncName := s.serviceName + info.methodName + "Generator"
 	generatorIfaceName := unexport(generatorFuncName)
 
@@ -718,11 +760,12 @@ func (s *serviceRender) renderStreamMethodParam(info rpcMethodInfo) cg.Builder {
 }
 
 func (s *serviceRender) wrapClientStreamHook(info rpcMethodInfo, body cg.Builder) cg.Builder {
+	log.Info(context.Background(), "entrance")
 	hook := cg.S(s.qualified(grpcPackage.Ident("StreamClientHook")))
 	method := strconv.Quote(info.methodName)
 
 	return cg.ComposeBuilder{
-		cg.DefineAssign("desc", cg.Attr(s.serviceDesc).Attr(cg.Index("Streams", info.streamIndex).String()),
+		cg.DefineAssign("desc", cg.Attr(s.serviceDesc).Attr(cg.Index("Streams", info.streamIndex).String())),
 		cg.Return(hook.Call("ctx", "c", "desc", method, cg.Func("").Param(
 			cg.Param("ctx", cg.S(s.qualified(contextPackage.Ident("Context")))),
 			cg.Param("stream", cg.S(s.qualified(grpcPackage.Ident("ClientStream")))),
@@ -731,10 +774,51 @@ func (s *serviceRender) wrapClientStreamHook(info rpcMethodInfo, body cg.Builder
 }
 
 func (s *serviceRender) renderStreamWriteLoop() cg.Builder {
-	return cg.ComposeBuilder{}
+	log.Info(context.Background(), "entrance")
+	eof := s.qualified(ioPackage.Ident("EOF"))
+	stream := cg.S("stream")
+	param := cg.S("param")
+	ctx := cg.S("ctx")
+
+	sendMsg := func(label string) cg.Builder {
+		br := cg.Break()
+		if label != "" {
+			br = cg.BreakLabel(label)
+		}
+
+		return cg.ComposeBuilder{
+			cg.If(cg.S("!ok")).Body(
+				cg.Assign("err", stream.Attr("CloseSend").Call()),
+				br,
+			),
+			cg.Assign("err", stream.Attr("SendMsg").Call("req")),
+			cg.If(cg.Ne("err", "nil")).Body(br),
+		}
+	}
+
+	return cg.ComposeBuilder{
+		cg.If(cg.Ne(param.Attr("GenReq").String(), "nil")).Body(
+			cg.For("").Body(
+				cg.DefineAssign("req, ok", param.Attr("GenReq").Attr("Next").Call()),
+				sendMsg(""),
+			),
+		).Else(
+			cg.Label("LOOP"),
+			cg.For("").Body(
+				cg.Select().Body(
+					cg.Case(cg.Recv("", ctx.Attr("Done").Call())).Body(cg.BreakLabel("LOOP")),
+					cg.Case(cg.DefineAssign("req, ok", cg.Recv("", param.Attr("Req")))).Body(sendMsg("LOOP")),
+				),
+			),
+		),
+		cg.If(cg.S(s.qualified(errorsPackage.Ident("Is"))).Call("err", eof)).Body(
+			cg.Assign("err", cg.S("nil")),
+		),
+	}
 }
 
 func genClientMocker(serviceName, getterName, namedGetterName string) cg.Builder {
+	log.Info(context.Background(), "entrance")
 	iface := serviceName + "Client"
 	structName := unexport(serviceName) + "Mocker"
 
