@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"log"
+	"net"
 
 	"google.golang.org/grpc"
 )
@@ -10,13 +12,13 @@ import (
 func Serve() error {
 	s := newServer()
 
-	return Start(s)
+	return start(s)
 }
 
-func Start(s *grpc.Server) error {
-	ctx := context.Background()
-
-	s.Serve()
-
-	return nil
+func start(s *grpc.Server) error {
+	l, err := net.Listen("tcp", ":2345")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	return s.Serve(l)
 }
