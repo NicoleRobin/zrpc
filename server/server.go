@@ -1,10 +1,22 @@
 package server
 
-import "google.golang.org/grpc"
+import (
+	"context"
 
-type rpcServiceRegister interface {
-	RegisterService(s grpc.ServiceRegistrar, handler interface{})
+	"google.golang.org/grpc"
+)
+
+// Serve start service
+func Serve() error {
+	s := newServer()
+
+	return Start(s)
 }
 
-func RegisterService(r rpcServiceRegister, handler interface{}) {
+func Start(s *grpc.Server) error {
+	ctx := context.Background()
+
+	s.Serve()
+
+	return nil
 }
