@@ -6,21 +6,19 @@ package cmd
 
 import (
 	"context"
-	"echo/handler"
+
 	"github.com/nicolerobin/zrpc/log"
 	"github.com/nicolerobin/zrpc/server"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	"echo/handler"
 	pb "echo/api/echo"
 )
 
 func ServeCmd(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	server.RegisterService(pb.GreeterService, handler.GreeterHandler{})
-	if err := server.Start(ctx) {
-		log.Error(context.Background(), "server.Start() failed", zap.Error(err))
-	}
 }
 
 // serveCmd represents the serve command
