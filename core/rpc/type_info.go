@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"fmt"
+	"google.golang.org/protobuf/runtime/protoiface"
 	"os"
 
 	"google.golang.org/protobuf/proto"
@@ -24,12 +25,31 @@ type ParsedTypeInfo struct {
 
 var typeRegistry = make(map[string]ParsedTypeInfo)
 
+type mixedMessage struct {
+	protoiface.MessageV1
+	proto.Message
+}
+
 func convertMessage(msg interface{}) proto.Message {
 	switch v := msg.(type) {
 	case proto.Message:
 		return v
 	default:
 		return protoimpl.X.ProtoMessageV2Of(v)
+	}
+}
+
+func convertMessageFactory(f interface{}) func() proto.Message {
+	switch v := f.(type) {
+	case func() protoiface.MessageV1:
+		return func() proto.Message {
+			v1 := v()
+			v2 := protoimpl.X.ProtoMessageV2Of(v1)
+
+			return mixedMessage{v1, v2}
+		}
+	default:
+		return f.(func() proto.Message)
 	}
 }
 
@@ -42,7 +62,7 @@ func RegisterTypeInfo(method string, info TypeInfo) {
 	typeRegistry[method] = ParsedTypeInfo{
 		Request:    convertMessage(info.Request),
 		Returns:    convertMessage(info.Returns),
-		NewReturns: convertMessage(info.NewReturns),
-		NewRequest: convertMessage(info.NewRequest),
+		NewReturns: convertMessageFactory(info.NewReturns),
+		NewRequest: convertMessageFactory(info.NewRequest),
 	}
 }

@@ -11,7 +11,9 @@ import (
 
 // Start run server
 func Start(ctx context.Context) error {
-	l, err := net.Listen("tcp", config.GetAddr())
+	addr := config.GetAddr()
+	log.Infof(ctx, "starting server on %s", addr)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Errorf(ctx, "failed to listen: %v", err)
 		return fmt.Errorf("failed to listen: %w", err)
