@@ -3,6 +3,7 @@ package config
 type HostConfig struct{}
 
 type LogConfig struct {
+	Directory string `yaml:"directory"`
 }
 
 type AppConfig struct {

@@ -1,0 +1,4 @@
+app_name: echo
+addr:
+log:
+  directory: stdout
