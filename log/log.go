@@ -29,8 +29,11 @@ var defaultLogger *zap.Logger
 
 func newConfig() zap.Config {
 	encoderConf := zap.NewProductionEncoderConfig()
+	encoderConf.TimeKey = "time"
+	encoderConf.MessageKey = "message"
 	encoderConf.FunctionKey = "function"
 	encoderConf.EncodeTime = zapcore.RFC3339TimeEncoder
+	encoderConf.EncodeCaller = zapcore.ShortCallerEncoder
 
 	logConf := zap.NewProductionConfig()
 	logConf.EncoderConfig = encoderConf
