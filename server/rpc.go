@@ -45,12 +45,12 @@ func newServer(options ...grpc.ServerOption) *serverWrapper {
 }
 
 func NewServer(opt Option) *grpc.Server {
-	opts := []grpc.ServerOption{
+	options := []grpc.ServerOption{
 		grpc.UnaryInterceptor(handlerInterceptor),
 	}
-	opt.GrpcOptions = append(opts, opt.GrpcOptions...)
+	options = append(options, opt.GrpcOptions...)
 
-	server := grpc.NewServer(opt.GrpcOptions...)
+	server := grpc.NewServer(options...)
 
 	return server
 }
