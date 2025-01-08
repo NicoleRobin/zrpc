@@ -50,5 +50,7 @@ func NewServer(opt Option) *grpc.Server {
 	}
 	opt.GrpcOptions = append(opts, opt.GrpcOptions...)
 
-	return nil
+	server := grpc.NewServer(opt.GrpcOptions...)
+
+	return server
 }
