@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"github.com/nicolerobin/zrpc/config"
 	"google.golang.org/grpc"
 )
 
@@ -18,6 +19,24 @@ type Manager struct {
 }
 
 func (m *Manager) GetClient(ctx context.Context) (*grpc.ClientConn, error) {
+	return m.GetClientWithConfig(ctx, config.ClientConfig{})
+}
+
+func (m *Manager) GetClientWithConfig(ctx context.Context, conf config.ClientConfig) (*grpc.ClientConn, error) {
+	cc, ok := getCc(m.clientName)
+	if ok {
+		return cc, nil
+	}
+
+	cc, err := m.dail(ctx, conf)
+	if err == nil {
+		return cc, nil
+	}
+
+	return nil, err
+}
+
+func (m *Manager) dail(ctx context.Context, conf config.ClientConfig) (*grpc.ClientConn, error) {
 	return nil, nil
 }
 

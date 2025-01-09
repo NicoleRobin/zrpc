@@ -12,3 +12,10 @@ type AppConfig struct {
 	Addr       string    `yaml:"addr"`
 	Log        LogConfig `yaml:"log"`
 }
+
+type ClientConfig struct {
+	AppName     string `yaml:"app_name"`
+	ServiceName string `yaml:"service_name"`
+	DialTimeout int    `yaml:"dial_timeout"`
+	Provider    string `yaml:"provider"`
+}
