@@ -23,7 +23,7 @@ func (m *Manager) GetClient(ctx context.Context) (*grpc.ClientConn, error) {
 }
 
 func (m *Manager) GetClientWithConfig(ctx context.Context, conf config.ClientConfig) (*grpc.ClientConn, error) {
-	cc, ok := getCc(m.clientName)
+	cc, ok := getCc(ctx, m.clientName)
 	if ok {
 		return cc, nil
 	}
@@ -37,7 +37,27 @@ func (m *Manager) GetClientWithConfig(ctx context.Context, conf config.ClientCon
 }
 
 func (m *Manager) dail(ctx context.Context, conf config.ClientConfig) (*grpc.ClientConn, error) {
+	if err := m.dialWithBreaker(ctx, conf, createCc); err != nil {
+		return nil, err
+	}
+
+	cc, ok := getCc(ctx, m.clientName)
+	if !ok {
+		return nil, rpc.NewDialError(errConnect)
+	}
 	return nil, nil
+}
+
+func (m *Manager) dailWithBreaker(ctx context.Context, conf config.ClientConfig, cb func(cc *grpc.ClientConn) error) error {
+	b := breaker.Get(m.dialBreakerName)
+
+	err := b.Do(func() {
+
+	})
+	if err != nil {
+
+	}
+	return err
 }
 
 func (m *Manager) Close(error) {}
