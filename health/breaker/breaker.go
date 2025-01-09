@@ -1,6 +1,9 @@
 package breaker
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 type breakerState int
 
@@ -27,5 +30,29 @@ type Breaker struct {
 
 	state breakerState
 
-	enabled uint32
+	enabled atomic.Bool
+}
+
+func newBreaker() *Breaker {
+	b := &Breaker{
+		state: stateClosed,
+	}
+
+	return b
+}
+
+func initBreaker(name string) {
+
+}
+
+func (b *Breaker) Enable() {
+	b.enabled.Store(true)
+}
+
+func (b *Breaker) Disable() {
+	b.enabled.Store(false)
+}
+
+func (b *Breaker) Do(f func() error) error {
+	return nil
 }
