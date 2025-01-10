@@ -37,8 +37,8 @@ func newConfig() zap.Config {
 
 	logConf := zap.NewProductionConfig()
 	logConf.EncoderConfig = encoderConf
-	logConf.OutputPaths = []string{"output.log"}
-	logConf.ErrorOutputPaths = []string{"error.log"}
+	logConf.OutputPaths = []string{"stdout"}
+	logConf.ErrorOutputPaths = []string{"stderr"}
 	return logConf
 }
 

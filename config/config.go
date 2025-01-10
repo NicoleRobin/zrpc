@@ -5,18 +5,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	defaultAddr = ":2345"
-)
-
-func GetAddr() string {
-	addr := viper.GetString("addr")
-	if addr == "" {
-		addr = defaultAddr
-	}
-	return addr
-}
-
 func init() {
 	viper.SetConfigName("app")  // name of config file (without extension)
 	viper.SetConfigType("yaml") // REQUIRED if the config file does not have the extension in the name

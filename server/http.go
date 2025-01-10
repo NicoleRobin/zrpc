@@ -14,7 +14,7 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func httpServer(l net.Listener, s *grpc.Server) error {
+func httpServe(l net.Listener, s *grpc.Server) error {
 	hs := http.Server{
 		Handler: &httpHandler{s},
 	}

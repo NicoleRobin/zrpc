@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"github.com/nicolerobin/zrpc/config"
 	"google.golang.org/grpc"
 )
@@ -37,27 +38,11 @@ func (m *Manager) GetClientWithConfig(ctx context.Context, conf config.ClientCon
 }
 
 func (m *Manager) dail(ctx context.Context, conf config.ClientConfig) (*grpc.ClientConn, error) {
-	if err := m.dialWithBreaker(ctx, conf, createCc); err != nil {
-		return nil, err
-	}
-
-	cc, ok := getCc(ctx, m.clientName)
-	if !ok {
-		return nil, rpc.NewDialError(errConnect)
-	}
-	return nil, nil
+	return createCc(ctx, m.clientName)
 }
 
 func (m *Manager) dailWithBreaker(ctx context.Context, conf config.ClientConfig, cb func(cc *grpc.ClientConn) error) error {
-	b := breaker.Get(m.dialBreakerName)
-
-	err := b.Do(func() {
-
-	})
-	if err != nil {
-
-	}
-	return err
+	return nil
 }
 
 func (m *Manager) Close(error) {}
@@ -67,4 +52,15 @@ func Get(clientName string) *Manager {
 		clientName:      clientName,
 		dialBreakerName: "rpc-client-dial-" + clientName,
 	}
+}
+
+func createCc(ctx context.Context, name string) (*grpc.ClientConn, error) {
+	dsn := fmt.Sprintf("dns:///%s", name)
+
+	grpcClient, err := grpc.NewClient(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("grpc.NewClient() failed, err: %w", err)
+	}
+
+	return grpcClient, nil
 }
