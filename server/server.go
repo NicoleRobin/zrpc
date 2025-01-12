@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/nicolerobin/zrpc/config"
+	"github.com/nicolerobin/zrpc/core"
 	"github.com/nicolerobin/zrpc/log"
 	"google.golang.org/grpc"
 	"net"
@@ -50,4 +51,12 @@ func Start(ctx context.Context) error {
 	s := newServer()
 	registerServices(s)
 	return s.Serve(ctx, l)
+}
+
+func beforeCall(ctx context.Context, req interface{}) (context.Context, error) {
+	return ctx, nil
+}
+
+func init() {
+	core.AddHook(Hook, BeforeCall(beforeCall))
 }
