@@ -9,7 +9,7 @@ type LogConfig struct {
 type AppConfig struct {
 	AppName    string    `yaml:"app_name"`
 	EnableHTTP bool      `yaml:"enable_http"`
-	Addr       string    `yaml:"addr"`
+	Address    string    `yaml:"address"`
 	Log        LogConfig `yaml:"log"`
 }
 

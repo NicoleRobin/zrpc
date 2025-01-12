@@ -1,4 +1,4 @@
 app_name: echo
-addr:
+address: :2345
 log:
   directory: stdout
