@@ -36,6 +36,7 @@ func newConfig() zap.Config {
 	encoderConf.EncodeCaller = zapcore.ShortCallerEncoder
 
 	logConf := zap.NewProductionConfig()
+	logConf.Encoding = "console"
 	logConf.EncoderConfig = encoderConf
 	logConf.OutputPaths = []string{"stdout"}
 	logConf.ErrorOutputPaths = []string{"stderr"}
